@@ -1,0 +1,11 @@
+# Entorno virtual
+.venv/
+__pycache__/
+
+# Config local
+.env
+*.log
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db

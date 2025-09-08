@@ -1,0 +1,143 @@
+{
+  "info": {
+    "name": "PruebaTecnica API - Operativa",
+    "_postman_id": "e9f3a0f2-0002-4d12-ab20-col",
+    "description": "Suite operativa: liveness, readiness, métricas y agente.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Liveness /health/live",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health/live"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('status=ok', () => pm.expect(json.status).to.eql('ok'));",
+              "pm.test('latencia razonable', () => pm.expect(pm.response.responseTime).to.be.below(parseInt(pm.environment.get('timeout_ms'))));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Readiness /health/ready",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health/ready"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('ready=true', () => pm.expect(json.ready).to.eql(true));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Azure Check /health/azure",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health/azure"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('azure_ok=true', () => pm.expect(json.azure_ok).to.eql(true));",
+              "pm.test('deployment presente', () => pm.expect(json).to.have.property('deployment'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metrics /metrics (si habilitado)",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/metrics"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('existen métricas http', () => pm.expect(pm.response.text()).to.include('http_request_duration_seconds'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agent Invoke /agent/invoke (ping)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/agent/invoke",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"ping\",\n  \"temperature\": 0.2\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('reply string no vacío', () => pm.expect(json.reply).to.be.a('string').and.not.empty);",
+              "pm.test('meta.provider esperado', () => pm.expect(json.meta.provider).to.eql(pm.environment.get('expected_provider')));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agent Invoke /agent/invoke (consulta técnica)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/agent/invoke",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Genera un endpoint FastAPI GET /status que devuelva {'ok': true} con tipado pydantic.\",\n  \"temperature\": 0.3,\n  \"max_tokens\": 300\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('reply parece código o instrucciones', () => pm.expect(json.reply.length).to.be.above(30));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
