@@ -1,5 +1,3 @@
-
-
 # 📘 Agno + FastAPI + Azure AI Foundry — Backend
 
 Servicio REST en **FastAPI** que expone un **Agente Agno** en `/agent/invoke`, con **health checks** y **métricas Prometheus**. Listo para desarrollo local y despliegue en contenedores.
@@ -32,6 +30,15 @@ AZURE_OPENAI_ENDPOINT=https://<tu-resource>.openai.azure.com
 AZURE_OPENAI_API_KEY=<tu_api_key>
 AZURE_OPENAI_API_VERSION=2024-08-01-preview
 AZURE_OPENAI_DEPLOYMENT=gpt-4.1
+
+# Orígenes permitidos para CORS (separados por comas)
+CORS_ORIGINS=http://localhost:3000,https://tu-frontend.com
+```
+
+👉 Crear a partir del template:
+
+```bash
+cp .env.example .env
 ```
 
 ---
@@ -55,7 +62,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 🐳 Docker
+## 🐳 Docker (desarrollo)
 
 `docker-compose.dev.yml`
 
@@ -93,7 +100,7 @@ docker compose -f docker-compose.dev.yml up --build
 
 ## 🏭 Producción
 
-`Dockerfile`
+`Dockerfile` (simplificado):
 
 ```dockerfile
 FROM python:3.12-slim
@@ -105,13 +112,20 @@ RUN pip install -U pip && pip install -r requirements.txt
 
 COPY . .
 
+# Instalar curl para healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD wget -qO- http://localhost:8000/health/live || exit 1
+  CMD curl -fsS http://localhost:8000/health/live || exit 1
 
-CMD ["gunicorn", "-c", "gunicorn.conf.py", "app.main:app"]
+# Default: Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+### Opción recomendada: Gunicorn + UvicornWorker
 
 `gunicorn.conf.py`
 
@@ -125,7 +139,7 @@ timeout = 120
 keepalive = 5
 ```
 
-Ejecutar en prod:
+Ejecutar:
 
 ```bash
 gunicorn -k uvicorn.workers.UvicornWorker app.main:app -w 2 -b 0.0.0.0:8000
@@ -154,8 +168,6 @@ curl -X POST http://localhost:8000/agent/invoke \
   -H "Content-Type: application/json" \
   -d '{ "message": "ping", "temperature": 0.2 }'
 ```
-
-
 
 
 

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+import os
 import structlog
 
 # --- imports internos ---
@@ -25,10 +26,14 @@ log = structlog.get_logger()
 
 app = FastAPI(title="Agno + FastAPI + Azure AI Foundry")
 
-# CORS (ajustá orígenes reales si hace falta)
+# === NUEVO: CORS configurable por env ===
+# Permite lista separada por comas, con fallback seguro.
+raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,https://tu-frontend.com")
+allow_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://tu-frontend.com"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
@@ -56,10 +61,8 @@ async def on_startup():
 # ------------------------------------------------------------------------------
 @app.get("/", include_in_schema=False)
 async def root():
-    # UX mínima: redirigí a la documentación interactiva
     return RedirectResponse(url="/docs", status_code=307)
 
-# Health genérico (para compatibilidad con frontends existentes)
 @app.get("/health")
 async def health(settings: Settings = Depends(get_settings)):
     return {
@@ -68,24 +71,29 @@ async def health(settings: Settings = Depends(get_settings)):
         "azure_deployment": settings.azure_openai_deployment,
     }
 
-# Liveness: ¿el proceso responde?
 @app.get("/health/live")
 async def health_live():
     return {"status": "ok"}
 
-# Readiness: ¿está listo para servir tráfico? (check rápido del agente/modelo)
+# === EDIT: readiness primero valida configuración antes de “pingear” el agente ===
 @app.get("/health/ready")
-async def health_ready():
+async def health_ready(settings: Settings = Depends(get_settings)):
     try:
+        # Validación rápida de config obligatoria
+        if not (settings.azure_openai_endpoint and settings.azure_openai_api_key and settings.azure_openai_deployment):
+            log.warning("readiness_config_missing")
+            raise HTTPException(status_code=503, detail="missing azure configuration")
+
         agent = get_agent()
-        # Ping corto. Si falla, devolvemos 503 para que el orquestador no enrute tráfico.
+        # Ping corto. Si falla, 503 para que el LB/Orquestador no enrute tráfico.
         _ = agent.run("ping")
         return {"ready": True}
+    except HTTPException:
+        raise
     except Exception as e:
         log.error("readiness_failed", error=str(e))
         raise HTTPException(status_code=503, detail="not ready")
 
-# Chequeo explícito a Azure (diagnóstico)
 @app.get("/health/azure")
 async def health_azure(settings: Settings = Depends(get_settings)):
     try:
@@ -117,8 +125,7 @@ async def invoke_agent(payload: ChatRequest):
 
         reply = agent.run(payload.message, **kwargs)
 
-        # Normalización del resultado (Agno puede devolver obj o str)
-        text = reply.text if hasattr(reply, "text") else (reply if isinstance(reply, str) else str(reply))
+        text = reply.text if hasattr(reply, "text") else (reply if isinstance(reply, "str") else str(reply))
         log.info("agent_invoke_ok", chars=len(text))
         return ChatResponse(
             reply=text,
